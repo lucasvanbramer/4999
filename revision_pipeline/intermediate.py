@@ -1,6 +1,6 @@
 import os
 import json
-from block import Block
+from .block import Block
 
 
 class Intermediate:
@@ -168,7 +168,7 @@ class Intermediate:
         res = []
         last_user = self.blocks[last_h].user
         contig = [last_h]
-        for h in reply_chain[i:]:
+        for h in reply_chain[i+1:]:
             this_h = self.find_ultimate_hash(h)
             if this_h is None:
                 continue

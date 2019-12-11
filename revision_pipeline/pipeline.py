@@ -5,9 +5,9 @@ from tqdm import tqdm
 
 from convokit import Corpus, User, Utterance
 
-import helpers
-from block import Block
-from intermediate import Intermediate
+from . import helpers
+from .block import Block
+from .intermediate import Intermediate
 
 BASE_API_URL = "https://en.wikipedia.org/w/api.php"
 
@@ -108,7 +108,6 @@ def convert_intermediate_to_corpus(accum: Intermediate) -> Corpus:
         if block.user not in users:
             users[block.user] = User(name=block.user)
         segments = accum.segment_contiguous_blocks(block.reply_chain)
-
         for seg in segments[:-1]:
             sos = helpers.string_of_seg(seg)
             complete_utterances.add(sos)
@@ -123,18 +122,12 @@ def convert_intermediate_to_corpus(accum: Intermediate) -> Corpus:
         belongs_to_segment = block_hashes_to_segments[block_hashes[0]]
         first_block = accum.blocks[block_hashes[0]]
 
-        # for h in block_hashes:
-        #     assert(h == findJoe Cole =_ultimate_hash(accum, h))
-
         u_id = block_hashes[0]
         u_user = users[first_block.user]
         u_root = belongs_to_segment[0][0]
         u_replyto = _find_reply_to_from_segment(belongs_to_segment)
         u_timestamp = first_block.timestamp
         u_text = "\n".join([accum.blocks[h].text for h in block_hashes])
-        print("this is the u_text:", u_text[:60])
-        print("these are the block hashes:",
-              " ".join([h[:8] for h in block_hashes]))
         u_meta = {}
         u_meta["constituent_blocks"] = block_hashes
 
@@ -165,19 +158,6 @@ def _query_api(params: dict) -> dict:
     params["format"] = "json"
     response_json = requests.get(url, params=params).json()
     return response_json
-
-
-def _get_all_revisions(title: str) -> list:
-    """Gets a list of all revisions for a particular talk page. 
-    Each revision in the list has the revision id, timestamp, and user who contributed it.
-
-    :param title: title of the page to be queried for (may or may not include "Talk:" prefix)
-    :type title: str
-
-    :return: list of all revisions of that page
-
-    """
-    return _get_revisions_since_revid(title, -1)
 
 
 def _get_revisions_since_revid(title: str, fromid: int) -> list:
@@ -357,7 +337,7 @@ def _parse_diff(revisions: list, diff: dict, accum: Intermediate) -> Intermediat
             if len(added_text) > 0:
                 block.text = added_text
                 block.timestamp = revisions[1]["timestamp"]
-                block.user = revisions[1]["user"]
+                block.user = revisions[1].get("user", "userhidden")
                 block.ingested = True
                 block.revision_ids = [revisions[1]["revid"]]
 
@@ -422,7 +402,7 @@ def _parse_diff(revisions: list, diff: dict, accum: Intermediate) -> Intermediat
                 block = accum.blocks.pop(old_hash)
                 block.text = new_text
                 block.timestamp = revisions[1]["timestamp"]
-                block.user = revisions[1]["user"]
+                block.user = revisions[1].get("user", "userhidden")
                 block.revision_ids.append(revisions[1]["revid"])
                 accum.blocks[new_hash] = block
                 accum.hash_lookup[new_hash] = new_hash
@@ -433,7 +413,7 @@ def _parse_diff(revisions: list, diff: dict, accum: Intermediate) -> Intermediat
                 block = Block()
                 block.text = new_text
                 block.timestamp = revisions[1]["timestamp"]
-                block.user = revisions[1]["user"]
+                block.user = revisions[1].get("user", "userhidden")
                 block.ingested = False
                 block.revision_ids = ["unknown", revisions[1]["revid"]]
                 block.reply_chain = [new_hash]

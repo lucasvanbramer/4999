@@ -32,7 +32,7 @@ class Block:
         res += "text: " + self.text + "\n"
         res += "timestamp: " + self.timestamp + "\n"
         res += "user: " + (self.user if self.user else "None") + "\n"
-        res += "ingestd: " + str(self.ingested) + "\n"
+        res += "ingested: " + str(self.ingested) + "\n"
         res += "revision_ids: " + str(self.revision_ids) + "\n"
         res += "reply_chain: " + str(self.reply_chain) + "\n"
         res += "is_followed: " + str(self.is_followed) + "\n"
