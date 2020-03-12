@@ -173,7 +173,7 @@ class Intermediate:
             if this_h is None:
                 continue
             this_user = self.blocks[this_h].user
-            if this_user == last_user:
+            if this_user == last_user and not self.blocks[last_h].is_header:
                 contig.append(this_h)
             else:
                 res.append(contig)
@@ -199,6 +199,7 @@ class Intermediate:
             block["revisions"] = b.revision_ids
             block["reply_chain"] = b.reply_chain
             block["is_followed"] = b.is_followed
+            block["is_header"] = b.is_header
             res[h] = block
         return res
 
@@ -220,5 +221,6 @@ class Intermediate:
             block.revision_ids = b["revisions"]
             block.reply_chain = b["reply_chain"]
             block.is_followed = b["is_followed"]
+            block.is_header = b["is_header"]
             res[h] = block
         return res

@@ -16,6 +16,8 @@ class Block:
     :type reply_chain: list
     :ivar is_followed: whether this block has another text block following it in the same revision (e.g. if this is the first of two paragraphs added in a revision)
     :type is_followed: bool
+    :ivar is_header: whether this block is a signifier of a new header / discussion
+    :type is_header: bool
     """
 
     def __init__(self):
@@ -26,6 +28,8 @@ class Block:
         self.revision_ids = None
         self.reply_chain = None
         self.is_followed = False
+        self.is_header = False
+        self.root_hash = None
 
     def __str__(self):
         res = "-----------------------------\n"
@@ -36,5 +40,7 @@ class Block:
         res += "revision_ids: " + str(self.revision_ids) + "\n"
         res += "reply_chain: " + str(self.reply_chain) + "\n"
         res += "is_followed: " + str(self.is_followed) + "\n"
+        res += "is_header: " + str(self.is_header) + "\n"
+        res += "root_hash: " + self.root_hash + "\n"
         res += "-----------------------------"
         return res

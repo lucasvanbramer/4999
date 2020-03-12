@@ -24,7 +24,9 @@ def compute_text_depth(text: str) -> int:
 
 def is_new_section_text(added_text: str) -> bool:
     """Returns whether added_text marks a new section on Wikipedia."""
-    return ((added_text[:3] == "===" and added_text[-3:] == "===") or (added_text[:2] == "==" and added_text[-2:] == "=="))
+    return ((added_text[:3] == "===" and added_text[-3:] == "===") or
+            (added_text[:2] == "==" and added_text[-2:] == "==") or
+            (added_text[0] == "=" and added_text[-1] == "="))
 
 
 def is_unedited_tr(all_td: list) -> bool:

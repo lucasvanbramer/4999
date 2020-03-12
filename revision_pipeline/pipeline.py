@@ -26,6 +26,26 @@ def get_corpus(title: str, folder: str = "./intermediate_format", write_intermed
     :param write_intermediate_to_disk: Whether to write the Intermediate file to disk after producing or updating it.
     :type write_intermediate_to_disk: bool
     """
+    accum = get_intermediate(title, folder, write_intermediate_to_disk)
+    print("generating corpus...", flush=True)
+    corpus = convert_intermediate_to_corpus(accum)
+    print("corpus generated.", flush=True)
+    return corpus
+
+
+def get_intermediate(title: str, folder: str = "./intermediate_format", write_intermediate_to_disk: bool = True) -> Intermediate:
+    """
+    Produces the most up-to-date Intermediate possible from the given talk page title and manages
+    its storage on disk. Makes use of cached Intermediate data formats on disk if they are available, and will then only
+    ingest the latest revisions.
+
+    :param title: Title of the Wikipedia page whose talk page is sought. May include the "Talk:" prefix, but not required.
+    :type title: str
+    :param folder: Directory containing Intermediate .jsons and destination of Intermediate if writing to disk.
+    :type folder: str
+    :param write_intermediate_to_disk: Whether to write the Intermediate file to disk after producing or updating it.
+    :type write_intermediate_to_disk: bool
+    """
 
     filename = (title[5:] if title[:5].lower() == "talk:" else title) + ".json"
     filepath = os.path.join(folder, filename)
@@ -52,10 +72,8 @@ def get_corpus(title: str, folder: str = "./intermediate_format", write_intermed
     if write_intermediate_to_disk and not is_up_to_date:
         accum.write_to_disk()
         print("intermediate written to disk at ", filepath, flush=True)
-    print("generating corpus...", flush=True)
-    corpus = convert_intermediate_to_corpus(accum)
-    print("corpus generated.", flush=True)
-    return corpus
+
+    return accum
 
 
 def update_intermediate(title: str, accum: Intermediate) -> Intermediate:
@@ -301,6 +319,7 @@ def _parse_diff(revisions: list, diff: dict, accum: Intermediate) -> Intermediat
     soup = BeautifulSoup(diff["compare"]["*"], features="lxml")
     hashed_text, block_depth, last_hash, last_depth = None, None, None, -1
     last_block_was_ingested = False
+    curr_section_hash = None
     behavior = []
 
     for tr in soup.find_all("tr")[1:]:
@@ -313,6 +332,9 @@ def _parse_diff(revisions: list, diff: dict, accum: Intermediate) -> Intermediat
                 hashed_text = helpers.compute_md5(unedited_text)
                 block_depth = helpers.compute_text_depth(unedited_text)
                 if hashed_text not in accum.blocks:  # this old block has not yet been added to accum
+                    if is_new_section_text(unedited_text):
+                        block.root_hash = hashed_text
+                        curr_section_hash = hashed_text
                     block.text = unedited_text
                     block.timestamp = revisions[0]["timestamp"]
                     block.user = None
@@ -322,6 +344,7 @@ def _parse_diff(revisions: list, diff: dict, accum: Intermediate) -> Intermediat
                     accum.blocks[hashed_text] = block
                     accum.hash_lookup[hashed_text] = hashed_text
                 else:
+                    curr_section_hash = accum.blocks.get(hashed_text, None).root_hash
                     # unchanged block has already been added to accum
                     pass
                 last_hash = hashed_text
@@ -343,11 +366,13 @@ def _parse_diff(revisions: list, diff: dict, accum: Intermediate) -> Intermediat
 
                 if helpers.is_new_section_text(added_text):
                     behavior.append("create_section")
+                    curr_section_hash = hashed_text
                     block.reply_chain = [hashed_text]
+                    block.is_header = True
                 else:
                     behavior.append("add_comment")
                     block_depth = helpers.compute_text_depth(added_text)
-                    if last_block_was_ingested:
+                    if last_block_was_ingested:     # implies this block's author wrote a block before this one
                         block.reply_chain = \
                             accum.blocks[last_hash].reply_chain.copy()
                         block.reply_chain.append(hashed_text)
@@ -361,7 +386,9 @@ def _parse_diff(revisions: list, diff: dict, accum: Intermediate) -> Intermediat
                             block.reply_chain.append(hashed_text)
                         else:
                             block.reply_chain = [hashed_text]
+                    block.is_header = False
 
+                block.root_hash = curr_section_hash
                 accum.blocks[hashed_text] = block
                 accum.hash_lookup[hashed_text] = hashed_text
                 last_hash = hashed_text
@@ -376,13 +403,6 @@ def _parse_diff(revisions: list, diff: dict, accum: Intermediate) -> Intermediat
             if len(removed_text) > 0:
                 hashed_removal = helpers.compute_md5(removed_text)
                 try:
-                    # removes the comment from the record of utterances
-                    if(hashed_removal == "eb14d894bab53eb1042fc8c87e7cda02"):
-                        print("deleting this guy!!",
-                              hashed_removal, flush=True)
-                        print("this was the text!", removed_text)
-                        print("this was the block!",
-                              accum.blocks[hashed_removal])
                     del accum.blocks[hashed_removal]
                     del accum.hash_lookup[hashed_removal]
                 except KeyError:
@@ -417,6 +437,7 @@ def _parse_diff(revisions: list, diff: dict, accum: Intermediate) -> Intermediat
                 block.ingested = False
                 block.revision_ids = ["unknown", revisions[1]["revid"]]
                 block.reply_chain = [new_hash]
+                block.root_hash = curr_section_hash
                 accum.blocks[new_hash] = block
                 accum.hash_lookup[new_hash] = new_hash
         elif not helpers.is_line_number_tr(all_td):

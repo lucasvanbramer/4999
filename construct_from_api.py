@@ -34,5 +34,5 @@ def print_corpus(c: Corpus) -> None:
 
 if __name__ == "__main__":
     corp = pipeline.get_corpus(
-        "Conversation", write_intermediate_to_disk=True)
+        "Punk", write_intermediate_to_disk=True)
     # print_corpus(corp)
