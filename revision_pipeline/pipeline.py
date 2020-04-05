@@ -124,7 +124,7 @@ def convert_intermediate_to_corpus(accum: Intermediate) -> Corpus:
     block_hashes_to_utt_ids = {}
     for block_hash, block in accum.blocks.items():
         if block.user not in users:
-            users[block.user] = User(name=block.user)
+            users[block.user] = User(id=block.user)
         segments = accum.segment_contiguous_blocks(block.reply_chain)
         for seg in segments[:-1]:
             sos = helpers.string_of_seg(seg)
@@ -153,8 +153,14 @@ def convert_intermediate_to_corpus(accum: Intermediate) -> Corpus:
             block_hashes_to_utt_ids[each_hash] = u_id
 
         this_utterance = Utterance(
-            u_id, u_user, u_root, u_replyto, u_timestamp, u_text)
-        this_utterance.meta = u_meta
+            id=u_id,
+            user=u_user, 
+            root=u_root,
+            reply_to=u_replyto, 
+            timestamp=u_timestamp,
+            text=u_text,
+            meta=u_meta)
+        # this_utterance.meta = u_meta
 
         utterances.append(this_utterance)
 
@@ -332,7 +338,7 @@ def _parse_diff(revisions: list, diff: dict, accum: Intermediate) -> Intermediat
                 hashed_text = helpers.compute_md5(unedited_text)
                 block_depth = helpers.compute_text_depth(unedited_text)
                 if hashed_text not in accum.blocks:  # this old block has not yet been added to accum
-                    if is_new_section_text(unedited_text):
+                    if helpers.is_new_section_text(unedited_text):
                         block.root_hash = hashed_text
                         curr_section_hash = hashed_text
                     block.text = unedited_text

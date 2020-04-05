@@ -124,3 +124,4 @@ class CommentGenerator():
                 if len(new_comments) > 0:
                     yield [(topic, self.curr_corpora[topic].get_comment[c]) for c in new_comments]
             time.sleep(2)
+
