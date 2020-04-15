@@ -140,11 +140,9 @@ def convert_intermediate_to_corpus(accum: Intermediate) -> Corpus:
         block_hashes = utt.split(" ")
         belongs_to_segment = block_hashes_to_segments[block_hashes[0]]
         first_block = accum.blocks[block_hashes[0]]
-        a = accum.find_ultimate_hash(first_block.reply_chain[0])
 
         u_id = block_hashes[0]
         u_user = users[first_block.user]
-        # u_root = belongs_to_segment[0][0]
         u_root = accum.find_ultimate_hash(first_block.root_hash)
         u_replyto = _find_reply_to_from_segment(belongs_to_segment)
         u_timestamp = first_block.timestamp
