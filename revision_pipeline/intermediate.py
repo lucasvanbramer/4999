@@ -200,6 +200,7 @@ class Intermediate:
             block["reply_chain"] = b.reply_chain
             block["is_followed"] = b.is_followed
             block["is_header"] = b.is_header
+            block["root_hash"] = b.root_hash
             res[h] = block
         return res
 
@@ -222,5 +223,6 @@ class Intermediate:
             block.reply_chain = b["reply_chain"]
             block.is_followed = b["is_followed"]
             block.is_header = b["is_header"]
+            block.root_hash = b["root_hash"]
             res[h] = block
         return res
