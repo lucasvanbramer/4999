@@ -149,7 +149,7 @@ def convert_intermediate_to_corpus(accum: Intermediate) -> Corpus:
         u_text = "\n".join([accum.blocks[h].text for h in block_hashes])
         u_meta = {}
         u_meta["constituent_blocks"] = block_hashes
-        u_meta["conversation_title"] = accum.blocks[u_root].text if u_root else u_text[:32] + "..."
+        u_meta["conversation_title"] = accum.blocks[u_root].text.strip("=") if u_root else u_text[:32] + "..."
         for each_hash in block_hashes:
             block_hashes_to_utt_ids[each_hash] = u_id
 
