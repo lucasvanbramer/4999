@@ -17,7 +17,7 @@ def compute_text_depth(text: str) -> int:
     if len(text) == 0:
         return 0
     d = 0
-    while text[d] == ":":
+    while d < len(text) and text[d] == ":":
         d += 1
     return d
 
