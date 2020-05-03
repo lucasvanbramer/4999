@@ -28,7 +28,7 @@ def get_corpus(title: str, folder: str = "./intermediate_format",
     :param write_intermediate_to_disk: Whether to write the Intermediate file to disk after producing or updating it.
     :type write_intermediate_to_disk: bool
     """
-    logging.basicConfig(level=log_level)
+    logging.getLogger().setLevel(log_level)
     accum = get_intermediate(
         title, folder, write_intermediate_to_disk, log_level)
     logging.info("generating corpus...")
@@ -51,7 +51,7 @@ def get_intermediate(title: str, folder: str = "./intermediate_format",
     :param write_intermediate_to_disk: Whether to write the Intermediate file to disk after producing or updating it.
     :type write_intermediate_to_disk: bool
     """
-    logging.basicConfig(level = log_level)
+    logging.getLogger().setLevel(log_level)
     filename=(title[5:] if title[:5].lower() == "talk:" else title) + ".json"
     filepath=os.path.join(folder, filename)
     is_up_to_date=False
@@ -129,18 +129,22 @@ def convert_intermediate_to_corpus(accum: Intermediate) -> Corpus:
     block_hashes_to_segments={}
     block_hashes_to_utt_ids={}
     for block_hash, block in accum.blocks.items():
-        if block.user not in users:
-            users[block.user]=User(id = block.user)
-        segments=accum.segment_contiguous_blocks(block.reply_chain)
-        # any complete contiguous block is a complete utterance
-        for seg in segments[:-1]:
-            sos=helpers.string_of_seg(seg)
-            complete_utterances.add(sos)
+        try:
+            if block.user not in users:
+                users[block.user]=User(id = block.user)
+            segments=accum.segment_contiguous_blocks(block.reply_chain)
+            assert(block_hash == segments[-1][-1])
+            # any complete contiguous block is a complete utterance
+            for seg in segments[:-1]:
+                sos=helpers.string_of_seg(seg)
+                complete_utterances.add(sos)
+            if not accum.blocks[segments[-1][-1]].is_followed:
+                complete_utterances.add(helpers.string_of_seg(segments[-1]))
+            block_hashes_to_segments[block_hash]=segments
+        except Exception as e:
+            logging.debug(e, exc_info=True)
+            logging.warning('Issue with conversion to corpus; skipping adding block "%s..."', block.text[:32])
 
-        assert(block_hash == segments[-1][-1])
-        if not accum.blocks[segments[-1][-1]].is_followed:
-            complete_utterances.add(helpers.string_of_seg(segments[-1]))
-        block_hashes_to_segments[block_hash]=segments
 
     for utt in iter(complete_utterances):
         block_hashes=utt.split(" ")
@@ -155,8 +159,7 @@ def convert_intermediate_to_corpus(accum: Intermediate) -> Corpus:
         u_text="\n".join([accum.blocks[h].text for h in block_hashes])
         u_meta={}
         u_meta["constituent_blocks"]=block_hashes
-        u_meta["conversation_title"]=accum.blocks[u_root].text.strip(
-            "=") if u_root else u_text[:32] + "..."
+        u_meta["last_revision"]=first_block.revision_ids[-1] if first_block.revision_ids[-1] != "unknown" else 0
         for each_hash in block_hashes:
             block_hashes_to_utt_ids[each_hash]=u_id
 
@@ -302,15 +305,18 @@ def _process_revisions_since_revid(title: str, fromid: int, accum: Intermediate)
     res = accum
     revisions = _get_revisions_since_revid(title, fromid)
     i = 1
-    pbar = tqdm(total=len(revisions))
+    if logging.getLogger().level <= logging.INFO:
+        pbar = tqdm(total=len(revisions))
     while i < len(revisions):
         last_rev = revisions[i-1]
         curr_rev = revisions[i]
         diff = _get_revision_diff(title, last_rev["revid"], curr_rev["revid"])
         res = _parse_diff([last_rev, curr_rev], diff, res)
         i += 1
-        pbar.update(1)
-    pbar.close()
+        if logging.getLogger().level <= logging.INFO:
+            pbar.update(1)
+    if logging.getLogger().level <= logging.INFO:
+        pbar.close()
     return res
 
 
@@ -491,12 +497,13 @@ def _parse_diff(revisions: list, diff: dict, accum: Intermediate) -> Intermediat
                 logging.warning(all_td)
                 raise Exception("block has unknown behavior")
     except Exception as e:
+        logging.debug(e, exc_info=True)
         logging.warning("Error in processing revision %s:", str(revisions[1]["revid"]))
         logging.warning(str(e))
         logging.warning("Skipping this revision.")
         behavior = ["error"]
 
-    accum.revisions.append((revisions[1]["revid"], behavior))
+    accum.revisions.append((revisions[1]["revid"], behavior, revisions[1]["timestamp"]))
     return accum
 
 

@@ -17,10 +17,11 @@ class Intermediate:
     :ivar blocks: a dictionary mapping block hashes (the md5 hash of the block's text)
     to the Block object representing that block.
     :type blocks: dict
-    :ivar revisions: a list of tuples describing the revisions that form this Intermediate, 
-    where each tuple is (revision's id, list of behaviors of the blocks modified in that revision) 
-    e.g. (1234, ["create_section", "add_comment"]) means that the user who submitted revision 1234
-    created a new conversation section and added a comment after it.
+    :ivar revisions: a list of triples describing the revisions that form this Intermediate, 
+    where each triple is (revision's id, list of behaviors of the blocks modified in that revision, 
+    datetime of that revision) 
+    e.g. (1234, ["create_section", "add_comment"], '2020-05-02 13:18:33.706543') means that the user who submitted revision 1234
+    created a new conversation section and added a comment after it at that time.
     :type revisions: list
     :ivar _filepath: the filepath of the Intermediate on disk; where it will be written to
     :type _filepath: str
@@ -47,8 +48,8 @@ class Intermediate:
             res += "---------------------------\n"
 
         res += "REVISIONS-----------------------------\n"
-        for k, v in self.revisions:
-            res += str(k) + ": " + str(v) + "\n"
+        for k, v, t in self.revisions:
+            res += str(k) + ": " + str(v) + ": " + str(t) + "\n"
             res += "---------------------------\n"
 
         return res
