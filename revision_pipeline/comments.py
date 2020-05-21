@@ -55,7 +55,7 @@ class CommentCorpus:
                 complete_utterances.add(sos)
 
             assert(block_hash == segments[-1][-1])
-            if not accum.blocks[segments[-1][-1]].is_followed:
+            if block.is_header or not accum.blocks[segments[-1][-1]].is_followed:
                 complete_utterances.add(helpers.string_of_seg(segments[-1]))
             block_hashes_to_segments[block_hash] = segments
 

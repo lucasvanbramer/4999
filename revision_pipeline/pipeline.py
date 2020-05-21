@@ -14,7 +14,8 @@ BASE_API_URL = "https://en.wikipedia.org/w/api.php"
 
 
 def get_corpus(title: str, folder: str = "./intermediate_format",
-    write_intermediate_to_disk: bool = True, log_level: int = logging.WARNING) -> Corpus:
+    write_intermediate_to_disk: bool = True, rough: bool = False,
+    log_level: int = logging.WARNING) -> Corpus:
     """
     The main function of the pipeline: returns a convokit Corpus object built
     from the stream of a Wikipedia talk page's revisions. Makes use of cached
@@ -27,12 +28,19 @@ def get_corpus(title: str, folder: str = "./intermediate_format",
     :type folder: str
     :param write_intermediate_to_disk: Whether to write the Intermediate file to disk after producing or updating it.
     :type write_intermediate_to_disk: bool
+    :param rough: Whether to use rough or normal conversion of intermediate to corpus
+    :type rough: bool
+    :param log_level: desired level of logging, from logging library
+    :type log_level: int
     """
     logging.getLogger().setLevel(log_level)
     accum = get_intermediate(
         title, folder, write_intermediate_to_disk, log_level)
     logging.info("generating corpus...")
-    corpus = convert_intermediate_to_corpus(accum)
+    if rough:
+        corpus = rough_convert_intermediate_to_corpus(accum)
+    else:
+        corpus = convert_intermediate_to_corpus(accum)
     logging.info("corpus generated.")
     return corpus
 
@@ -50,6 +58,8 @@ def get_intermediate(title: str, folder: str = "./intermediate_format",
     :type folder: str
     :param write_intermediate_to_disk: Whether to write the Intermediate file to disk after producing or updating it.
     :type write_intermediate_to_disk: bool
+    :param log_level: desired level of logging, from logging library
+    :type log_level: int
     """
     logging.getLogger().setLevel(log_level)
     filename=(title[5:] if title[:5].lower() == "talk:" else title) + ".json"
@@ -138,13 +148,12 @@ def convert_intermediate_to_corpus(accum: Intermediate) -> Corpus:
             for seg in segments[:-1]:
                 sos=helpers.string_of_seg(seg)
                 complete_utterances.add(sos)
-            if not accum.blocks[segments[-1][-1]].is_followed:
+            if block.is_header or not accum.blocks[segments[-1][-1]].is_followed:
                 complete_utterances.add(helpers.string_of_seg(segments[-1]))
             block_hashes_to_segments[block_hash]=segments
         except Exception as e:
             logging.debug(e, exc_info=True)
             logging.warning('Issue with conversion to corpus; skipping adding block "%s..."', block.text[:32])
-
 
     for utt in iter(complete_utterances):
         block_hashes=utt.split(" ")
@@ -179,6 +188,108 @@ def convert_intermediate_to_corpus(accum: Intermediate) -> Corpus:
 
     return corpus
 
+
+def rough_convert_intermediate_to_corpus(accum: Intermediate) -> Corpus:
+    """Generates a rougher approximation of a Corpus from an Intermediate.
+    Does not worry about reply_to structure, and instead sorts replies by the 
+    chronological order in which utterances are posted to discussions.
+
+    :param accum: the Intermediate to be converted
+    :type accum: Intermediate
+
+    :return: the Corpus generated from accum
+    """
+    users={}
+    utterances=[]
+    unknown_len=set()
+    complete_utterances=set()
+    block_hashes_to_segments={}
+    block_hashes_to_utt_ids={}
+    for block_hash, block in accum.blocks.items():
+        try:
+            if block.user not in users:
+                users[block.user]=User(id = block.user)
+            segments=accum.segment_contiguous_blocks(block.reply_chain)
+            assert(block_hash == segments[-1][-1])
+            # any complete contiguous block is a complete utterance
+            for seg in segments[:-1]:
+                sos=helpers.string_of_seg(seg)
+                complete_utterances.add(sos)
+            if block.is_header or not accum.blocks[segments[-1][-1]].is_followed:
+                complete_utterances.add(helpers.string_of_seg(segments[-1]))
+            block_hashes_to_segments[block_hash]=segments
+        except Exception as e:
+            logging.debug(e, exc_info=True)
+            logging.warning('Issue with conversion to corpus; skipping adding block "%s..."', block.text[:32])
+
+    children_of_root = {}
+
+    for utt in iter(complete_utterances):
+        block_hashes=utt.split(" ")
+        belongs_to_segment=block_hashes_to_segments[block_hashes[0]]
+        first_block=accum.blocks[block_hashes[0]]
+
+        u_id=block_hashes[0]
+        u_user=users[first_block.user]
+        u_root=accum.find_ultimate_hash(first_block.root_hash)
+        u_timestamp=first_block.timestamp
+        u_text="\n".join([accum.blocks[h].text for h in block_hashes])
+        u_meta={}
+        u_meta["last_revision"]=first_block.revision_ids[-1] if first_block.revision_ids[-1] != "unknown" else 0
+
+        this_utterance=Utterance(
+            id=u_id,
+            user=u_user,
+            root=u_root,
+            reply_to=None,
+            timestamp=u_timestamp,
+            text=u_text,
+            meta=u_meta)
+
+        if u_root in children_of_root:
+            children_of_root[u_root].append(this_utterance)
+        else:
+            children_of_root[u_root] = [this_utterance]
+
+    utterances = []
+    for root, utt_list in children_of_root.items():
+        if root == None:
+            continue
+
+        utt_list.sort(key=lambda x: x.timestamp)
+
+        ind_of_root = 0
+        try:
+            while utt_list[ind_of_root].id != root:
+                ind_of_root += 1
+        except Exception as e:
+            logging.debug(e, exc_info=True)
+            logging.warning('Skipping section in conversion to corpus: could not find section header for root %s', root)
+            continue
+
+        if ind_of_root > 0:
+            utt_list.insert(0, utt_list.pop(ind_of_root))
+
+        utterances.append(utt_list[0])
+        added = set([utt_list[0].id])
+        i, j = 0, 1
+        while j < len(utt_list):
+            if utt_list[j].id not in added:
+                utt_list[j].reply_to = utt_list[i].id
+                added.add(utt_list[j].id)
+                utterances.append(utt_list[j])
+                i = j
+            j += 1
+
+        # for i in range(1, len(utt_list)):
+        #     if utt_list[i-1].id == utt_list[i].id:
+        #         logging.warning("Skipping utterance in conversion to corpus: reply to self %s", utt_list[i].id)
+        #     else:
+        #         utt_list[i].reply_to = utt_list[i-1].id
+        #         utterances.append(utt_list[i])
+        
+    corpus = Corpus(utterances=utterances)
+    return corpus
 
 def _query_api(params: dict) -> dict:
     """Queries the BASE_API_URL API
@@ -347,7 +458,7 @@ def _parse_diff(revisions: list, diff: dict, accum: Intermediate) -> Intermediat
             if helpers.is_unedited_tr(all_td):
                 assert(all_td[1].get_text() == all_td[3].get_text())
                 unedited_text = str(all_td[1].get_text())
-                if len(unedited_text) > 0:
+                if len(unedited_text.strip(" ")) > 0:
                     hashed_text = helpers.compute_md5(unedited_text)
                     block_depth = helpers.compute_text_depth(unedited_text)
                     if hashed_text not in accum.blocks:  # this old block has not yet been added to accum
@@ -377,7 +488,7 @@ def _parse_diff(revisions: list, diff: dict, accum: Intermediate) -> Intermediat
             elif helpers.is_new_content_tr(all_td):  # block includes new content
                 added_text = str(all_td[2].get_text())
                 hashed_text = helpers.compute_md5(added_text)
-                if len(added_text) > 0:
+                if len(added_text.strip(" ")) > 0:
                     if helpers.is_moved_right_tr(all_td):
                         # is a block being moved
                         behavior.append("move")
@@ -471,16 +582,32 @@ def _parse_diff(revisions: list, diff: dict, accum: Intermediate) -> Intermediat
                 behavior.append("modify")
                 if old_hash in accum.blocks:
                     assert(old_hash in accum.hash_lookup)
-                    # NOTE: does not touch "reply_chain" or "ingested" element of dictionary - for
-                    # reply chain, just check hash table later
                     block = accum.blocks.pop(old_hash)
                     block.text = new_text
                     block.timestamp = revisions[1]["timestamp"]
                     block.user = revisions[1].get("user", "userhidden")
                     block.revision_ids.append(revisions[1]["revid"])
+                    block.ingested = True
                     accum.blocks[new_hash] = block
                     accum.hash_lookup[new_hash] = new_hash
                     accum.hash_lookup[old_hash] = new_hash
+
+                    # the modification may be editing who this comment is replying to
+                    block_depth = helpers.compute_text_depth(new_text)
+                    if last_block_was_ingested:     # implies this block's author wrote a block before this one
+                        block.reply_chain = \
+                            accum.blocks[last_hash].reply_chain.copy()
+                        block.reply_chain.append(new_hash)
+                        accum.blocks[last_hash].is_followed = True
+                    else:
+                        reply_to_hash = accum.compute_reply_hash(
+                            last_hash, last_depth, block_depth)
+                        if reply_to_hash is not None:
+                            block.reply_chain = \
+                                accum.blocks[reply_to_hash].reply_chain.copy()
+                            block.reply_chain.append(new_hash)
+                        else:
+                            block.reply_chain = [new_hash]
                 else:
                     # someone edits comment that hasn't been seen
                     # assert(old_hash not in accum.hash_lookup) # NOTE: look into further. Python seems to mess this up
@@ -493,6 +620,10 @@ def _parse_diff(revisions: list, diff: dict, accum: Intermediate) -> Intermediat
                     block.root_hash = curr_section_hash
                     accum.blocks[new_hash] = block
                     accum.hash_lookup[new_hash] = new_hash
+                last_hash = new_hash
+                last_depth = helpers.compute_text_depth(new_text)
+                last_block_was_ingested = True      # treat it like this author wrote this block
+
             elif not helpers.is_line_number_tr(all_td):
                 logging.warning(all_td)
                 raise Exception("block has unknown behavior")

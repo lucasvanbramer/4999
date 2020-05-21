@@ -1,5 +1,6 @@
 from revision_pipeline import pipeline
 from convokit import Corpus
+import logging
 
 
 def get_corpus_leaf_ids(c: Corpus) -> set:
@@ -34,5 +35,5 @@ def print_corpus(c: Corpus) -> None:
 
 if __name__ == "__main__":
     corp = pipeline.get_corpus(
-        "Punk", write_intermediate_to_disk=True)
+        "Guy_Fieri", write_intermediate_to_disk=True, log_level=logging.INFO)
     print_corpus(corp)

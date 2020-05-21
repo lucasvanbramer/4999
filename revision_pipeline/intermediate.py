@@ -1,6 +1,7 @@
 import os
 import json
 from .block import Block
+from .helpers import compute_text_depth
 
 
 class Intermediate:
@@ -128,16 +129,17 @@ class Intermediate:
         elif this_depth > reply_to_depth:
             return reply_to_hash
         else:
-            while reply_to_depth > this_depth:
+            while reply_to_depth >= this_depth:
                 try:
                     # we know for a fact that reply_to_hash is most recent version
                     reply_block = self.blocks[reply_to_hash]
                     reply_to_hash = self.find_ultimate_hash(
                         reply_block.reply_to)
-                    reply_to_depth -= 1
+                    reply_to_depth = compute_text_depth(reply_block.text)
                 except:
                     # in the case that a high level comment is not stored
                     return None
+            return reply_to_hash
 
     def segment_contiguous_blocks(self, reply_chain: list) -> list:
         """Turns a reply chain into a list of sublists, where each sublist contains
@@ -174,7 +176,7 @@ class Intermediate:
             if this_h is None:
                 continue
             this_user = self.blocks[this_h].user
-            if this_user == last_user and not self.blocks[last_h].is_header:
+            if this_user == last_user and not self.blocks[last_h].is_header and self.blocks[last_h].is_followed:
                 contig.append(this_h)
             else:
                 res.append(contig)
